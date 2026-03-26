@@ -1,0 +1,68 @@
+pragma language_version >= 0.20;
+
+import CompactStandardLibrary;
+
+export {
+  mint,
+  register,
+  free_mint
+}
+
+ledger nonce: Bytes<32>;
+ledger nonce_counter: Counter;
+ledger mint_fee: Uint<128>;
+ledger names: Map<Bytes<32>, Bytes<32>>;
+
+constructor(_nonce: Bytes<32>, _mint_fee: Uint<128>) {
+  nonce = disclose(_nonce);
+  mint_fee = disclose(_mint_fee);
+}
+
+// BUG CIRCUIT: mintShieldedToken + receiveUnshielded combo
+// Fails when wallet has only unshielded NIGHT
+circuit mint(name: Bytes<32>): Bytes<32> {
+  assert(!names.member(disclose(name)), "Name already taken");
+
+  // Mint a shielded token to the caller
+  const coin_info = mintShieldedToken(
+    pad(32, "fee-mint"), 1 as Uint<64>, nonce,
+    left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey())
+  );
+
+  names.insert(disclose(name), disclose(name));
+
+  // Collect fee in unshielded NIGHT
+  if (mint_fee > (0 as Uint<128>)) {
+    receiveUnshielded(nativeToken(), mint_fee);
+  }
+
+  nonce = evolveNonce(nonce_counter, nonce);
+  nonce_counter.increment(1);
+  return coin_info.color;
+}
+
+// CONTROL: fee-only (no mintShieldedToken) — should work
+circuit register(name: Bytes<32>): [] {
+  assert(!names.member(disclose(name)), "Name already taken");
+  names.insert(disclose(name), disclose(name));
+  if (mint_fee > (0 as Uint<128>)) {
+    receiveUnshielded(nativeToken(), mint_fee);
+  }
+}
+
+// CONTROL: mint-only (no receiveUnshielded) — should work
+// Uses same mint logic but ignores fee
+circuit free_mint(name: Bytes<32>): Bytes<32> {
+  assert(!names.member(disclose(name)), "Name already taken");
+
+  const coin_info = mintShieldedToken(
+    pad(32, "fee-mint"), 1 as Uint<64>, nonce,
+    left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey())
+  );
+
+  names.insert(disclose(name), disclose(name));
+
+  nonce = evolveNonce(nonce_counter, nonce);
+  nonce_counter.increment(1);
+  return coin_info.color;
+}
