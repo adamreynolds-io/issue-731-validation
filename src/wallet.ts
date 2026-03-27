@@ -70,7 +70,23 @@ export class MidnightWalletProvider implements MidnightProvider, WalletProvider 
       },
       { ttl, tokenKindsToBalance },
     );
-    return await this.wallet.finalizeRecipe(recipe);
+    const finalized = await this.wallet.finalizeRecipe(recipe);
+    this.logTransaction(finalized);
+    return finalized;
+  }
+
+  private logTransaction(tx: FinalizedTransaction): void {
+    try {
+      const txDebug = tx.toString();
+      this.logger.info(
+        `--- Finalized Transaction ---\n${txDebug}\n--- End Transaction ---`,
+      );
+      const serialized = tx.serialize();
+      const hex = Buffer.from(serialized).toString('hex');
+      this.logger.debug(`Transaction hex (${serialized.length} bytes): ${hex}`);
+    } catch (err) {
+      this.logger.warn(`Failed to log transaction: ${err}`);
+    }
   }
 
   submitTx(tx: FinalizedTransaction): Promise<string> {
